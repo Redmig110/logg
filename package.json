@@ -1,0 +1,15 @@
+{
+  "name": "habit-tracker",
+  "version": "1.0.0",
+  "description": "极简命令行习惯打卡器",
+  "main": "index.js",
+  "bin": {
+    "habit": "./index.js"
+  },
+  "scripts": {
+    "test": "node test.js"
+  },
+  "keywords": ["habit", "tracker", "cli"],
+  "author": "",
+  "license": "MIT"
+}
