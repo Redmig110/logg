@@ -10,11 +10,16 @@ function cleanup() {
   }
 }
 
+function stripAnsi(str) {
+  return str.replace(/\x1b\[[0-9;]*m/g, '');
+}
+
 function run(cmd) {
   try {
-    return execSync(`node index.js ${cmd}`, { encoding: 'utf8', cwd: __dirname });
+    const output = execSync(`node index.js ${cmd}`, { encoding: 'utf8', cwd: __dirname });
+    return stripAnsi(output);
   } catch (e) {
-    return e.stdout + e.stderr;
+    return stripAnsi(e.stdout + e.stderr);
   }
 }
 
@@ -59,10 +64,11 @@ async function runTests() {
 
   test('1. 初始状态 - 无数据时 status 显示正确', () => {
     const output = run('status');
-    assert(output.includes('今日打卡：✗ 未打卡'), '显示今日未打卡');
-    assert(output.includes('连续打卡：0 天'), '连续打卡为 0');
-    assert(output.includes('累计打卡：0 天'), '累计打卡为 0');
-    assert(output.includes('上次打卡：暂无记录'), '显示暂无记录');
+    assert(output.includes('未打卡'), '显示今日未打卡');
+    assert(output.includes('连续打卡'), '包含连续打卡字段');
+    assert(/连续打卡\s+0 天/.test(output), '连续打卡为 0');
+    assert(/累计打卡\s+0 天/.test(output), '累计打卡为 0');
+    assert(output.includes('暂无记录'), '显示暂无记录');
   });
 
   test('2. 初始状态 - help 命令显示帮助信息', () => {
@@ -70,19 +76,21 @@ async function runTests() {
     assert(output.includes('habit done'), '显示 done 命令');
     assert(output.includes('habit status'), '显示 status 命令');
     assert(output.includes('habit help'), '显示 help 命令');
+    assert(output.includes('习惯打卡器'), '显示标题');
   });
 
   test('3. 初始状态 - 无参数时显示帮助信息', () => {
     const output = run('');
-    assert(output.includes('使用方法'), '显示使用方法');
+    assert(output.includes('习惯打卡器'), '显示标题');
+    assert(output.includes('habit done'), '显示命令列表');
   });
 
   test('4. 打卡功能 - 首次打卡成功', () => {
     const output = run('done');
-    assert(output.includes('✓ 打卡成功！'), '显示打卡成功');
-    assert(output.includes('当前连续打卡：1 天'), '连续打卡为 1');
-    assert(output.includes('累计打卡：1 天'), '累计打卡为 1');
-    assert(output.includes('打卡时间：'), '显示打卡时间');
+    assert(output.includes('打卡成功'), '显示打卡成功');
+    assert(/连续打卡\s+1 天/.test(output), '连续打卡为 1');
+    assert(/累计打卡\s+1 天/.test(output), '累计打卡为 1');
+    assert(output.includes('打卡时间'), '显示打卡时间');
 
     const data = readData();
     assert(data.records.length === 1, '记录数组有 1 条记录');
@@ -93,8 +101,8 @@ async function runTests() {
   test('5. 打卡功能 - 同一天重复打卡提示已打卡', () => {
     run('done');
     const output = run('done');
-    assert(output.includes('今天已经打卡过了！'), '提示已打卡');
-    assert(output.includes('当前连续打卡：1 天'), '连续打卡仍为 1');
+    assert(output.includes('今天已经打卡过了'), '提示已打卡');
+    assert(/连续打卡\s+1 天/.test(output), '连续打卡仍为 1');
 
     const data = readData();
     assert(data.records.length === 1, '记录仍为 1 条');
@@ -103,10 +111,12 @@ async function runTests() {
   test('6. 状态查询 - 打卡后 status 显示正确', () => {
     run('done');
     const output = run('status');
-    assert(output.includes('今日打卡：✓ 已完成'), '显示今日已打卡');
-    assert(output.includes('连续打卡：1 天'), '连续打卡为 1');
-    assert(output.includes('累计打卡：1 天'), '累计打卡为 1');
-    assert(output.includes('上次打卡：'), '显示上次打卡时间');
+    assert(output.includes('已完成'), '显示今日已打卡');
+    assert(/连续打卡\s+1 天/.test(output), '连续打卡为 1');
+    assert(/累计打卡\s+1 天/.test(output), '累计打卡为 1');
+    assert(output.includes('上次打卡'), '显示上次打卡时间');
+    assert(output.includes('距离下一里程碑'), '显示里程碑进度');
+    assert(output.includes('█'), '显示进度条');
   });
 
   test('7. 断签判断 - 昨天打卡，今天打卡，连续天数递增', () => {
@@ -118,8 +128,8 @@ async function runTests() {
     });
 
     const output = run('done');
-    assert(output.includes('当前连续打卡：2 天'), '连续打卡递增到 2');
-    assert(output.includes('累计打卡：2 天'), '累计打卡为 2');
+    assert(/连续打卡\s+2 天/.test(output), '连续打卡递增到 2');
+    assert(/累计打卡\s+2 天/.test(output), '累计打卡为 2');
 
     const data = readData();
     assert(data.streak === 2, 'streak 为 2');
@@ -134,8 +144,8 @@ async function runTests() {
     });
 
     const output = run('done');
-    assert(output.includes('当前连续打卡：1 天'), '断签后连续打卡重置为 1');
-    assert(output.includes('累计打卡：2 天'), '累计打卡仍递增');
+    assert(/连续打卡\s+1 天/.test(output), '断签后连续打卡重置为 1');
+    assert(/累计打卡\s+2 天/.test(output), '累计打卡仍递增');
 
     const data = readData();
     assert(data.streak === 1, 'streak 重置为 1');
@@ -150,8 +160,8 @@ async function runTests() {
     });
 
     const output = run('status');
-    assert(output.includes('连续打卡：0 天'), '断签后连续打卡为 0');
-    assert(output.includes('⚠ 检测到断签，连续打卡天数已重置'), '显示断签提示');
+    assert(/连续打卡\s+0 天/.test(output), '断签后连续打卡为 0');
+    assert(output.includes('检测到断签'), '显示断签提示');
 
     const data = readData();
     assert(data.streak === 0, 'streak 已重置为 0');
@@ -169,11 +179,28 @@ async function runTests() {
     });
 
     const output = run('done');
-    assert(output.includes('当前连续打卡：5 天'), '连续打卡 5 天');
-    assert(output.includes('累计打卡：5 天'), '累计打卡 5 天');
+    assert(/连续打卡\s+5 天/.test(output), '连续打卡 5 天');
+    assert(/累计打卡\s+5 天/.test(output), '累计打卡 5 天');
   });
 
-  test('11. 数据持久化 - 多次打卡后数据正确保存', () => {
+  test('11. 里程碑 - 达成 7 天里程碑显示祝贺', () => {
+    const records = [];
+    for (let i = 6; i >= 1; i--) {
+      records.push(daysAgo(i));
+    }
+    writeData({
+      records: records,
+      streak: 6,
+      lastCheckIn: daysAgo(1)
+    });
+
+    const output = run('done');
+    assert(/连续打卡\s+7 天/.test(output), '连续打卡 7 天');
+    assert(output.includes('恭喜达成'), '显示里程碑祝贺');
+    assert(output.includes('7 天里程碑'), '显示 7 天里程碑');
+  });
+
+  test('12. 数据持久化 - 多次打卡后数据正确保存', () => {
     run('done');
     const data1 = readData();
     assert(data1.records.length === 1, '第一次打卡后 1 条记录');
@@ -191,10 +218,24 @@ async function runTests() {
     assert(data2.streak === 1, '断签后 streak 为 1');
   });
 
-  test('12. 未知命令 - 显示错误信息', () => {
+  test('13. 未知命令 - 显示错误信息', () => {
     const output = run('unknown');
     assert(output.includes('未知命令'), '提示未知命令');
-    assert(output.includes('使用方法'), '显示使用方法');
+    assert(output.includes('习惯打卡器'), '显示帮助标题');
+  });
+
+  test('14. 进度条 - status 输出包含进度条元素', () => {
+    const yesterday = daysAgo(1);
+    writeData({
+      records: [yesterday],
+      streak: 1,
+      lastCheckIn: yesterday
+    });
+    run('done');
+    const output = run('status');
+    assert(output.includes('█'), '包含进度条填充字符');
+    assert(output.includes('░'), '包含进度条空字符');
+    assert(output.includes('%'), '包含百分比');
   });
 
   console.log(`\n=== 测试完成 ===`);
